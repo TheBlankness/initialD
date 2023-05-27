@@ -51,7 +51,7 @@ void CntrlMotors (void *data)
         speed_r = myrobot.rspeed;
         speed_l = myrobot.lspeed;
         robo_motorSpeed(speed_l, speed_r);
-        OSTimeDlyHMSM(0, 0, 0, 250);                /* Task period ~ 250 ms              */
+        OSTimeDlyHMSM(0, 0, 0, 10);                /* Task period ~ 250 ms              */
     }
 }
 
@@ -59,29 +59,99 @@ void CntrlMotors (void *data)
  * Write you own navigation task here
  */
 
-void Navig (void *data)
+int getWeightValue(int line) {  
+    int mid = 1000; 
+    int left = 0; 
+    int right = 2000; 
+    int value = 0; 
+    int active = 0;
+ 
+    switch (line) { 
+        case 0:  
+            active = 1; 
+            value = right; 
+            break; 
+        case 1:  
+            active = 1; 
+            value = right; 
+            break; 
+        case 2:  
+            active = 1; 
+            value = mid; 
+            break; 
+        case 3:  
+            active = 2; 
+            value = mid + right; 
+            break; 
+        case 4: 
+            active = 1;  
+            value = left; 
+            break; 
+        case 6:  
+            active = 2; 
+            value = mid + left; 
+            break; 
+        case 7:  
+            active = 3; 
+            value = mid+left+right; 
+            break;
+        default:
+            value=0;
+            active=0;
+            break;
+    } 
+ 
+    if (active==0)
+    {
+        return 0;
+    }
+    
+    return value / active; 
+}
+
+#define CENTER_VALUE 1000   // The desired line sensor value for being centered on the line
+#define KP 0.0075           // Proportional control constant
+#define KI 0.0005           // Integral control constant
+#define KD 0.001            // Derivative control constant
+
+void Navig(void *data)
 {
+    int integral = 0;    // Accumulated error
+    int prevError = 0;   // Previous error
+
     for (;;)
     {
-        if (myrobot.obstacle == 1)                  /* If blocked then reverse              */
-        {
-            myrobot.rspeed   = -LOW_SPEED;          /* REVERSE */
-            myrobot.lspeed   = -LOW_SPEED;
-        }
-        else                                        /* obstacle is far away & no collision   */
-        {
-            myrobot.rspeed   = MEDIUM_SPEED;        /* move forward with medium speed        */
-            myrobot.lspeed   = MEDIUM_SPEED;
+        int lineSensorValue = getWeightValue(robo_lineSensor());   // Read the line sensor value
+
+        int error = lineSensorValue - CENTER_VALUE; // Calculate the error
+        integral += error;  // Accumulate the error over time
+
+        // Derivative term calculation
+        int derivative = error - prevError;
+        prevError = error;
+
+        if (lineSensorValue == 1000) {
+            integral = 0;
         }
 
-		if (robo_lightSensor() > 60)                /* it is too bright, I'm photophobia     */
-		{
-			myrobot.rspeed   = -LOW_SPEED;          /* turn right to avoid                   */
-            myrobot.lspeed   =  LOW_SPEED;
-		}
-        OSTimeDlyHMSM(0, 0, 0, 500);                /* Task period ~ 500 ms                  */
+        if (myrobot.obstacle == 1) {
+            // Obstacle detected, stop the car
+            myrobot.rspeed = 0;
+            myrobot.lspeed = 0;
+            integral = 0;  // Reset the accumulated error
+        }
+        else {
+            // Adjust motor speeds based on the error, accumulated error, and derivative
+            myrobot.lspeed = MEDIUM_SPEED + KP * error + KI * integral + KD * derivative;
+            myrobot.rspeed = MEDIUM_SPEED - KP * error - KI * integral - KD * derivative;
+        }
+
+        OSTimeDlyHMSM(0, 0, 0, 10);   // Task period ~ 100 ms
     }
 }
+
+
+
 
 
 /*------Highest pririority task----------*/
@@ -131,4 +201,5 @@ int main( void )
     OSStart();                                             /* Start multitasking             */
     while (1);                                             /* die here                       */
 }
+
 
